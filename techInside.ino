@@ -1,26 +1,30 @@
 #include <ESP8266WiFi.h>
-#include <PubSubClient.h>  // Download and install this library first from: https://www.arduinolibraries.info/libraries/pub-sub-client
+#include <PubSubClient.h>
 #include <WiFiClient.h>
 
-#define SSID_NAME "DESKTOP-EARRVEN 0776"                    // Your Wifi Network name
-#define SSID_PASSWORD "304$73Qc"            // Your Wifi network password
-#define MQTT_BROKER "smartnest.cz"               // Broker host
-#define MQTT_PORT 1883                           // Broker port
-#define MQTT_USERNAME "wl11lm"                 // Username from Smartnest
-#define MQTT_PASSWORD "ed0bf3995ac52aa325ac2c11a29dbb80"                 // Password from Smartnest (or API key)
-#define MQTT_CLIENT "62a2142ef8510369f2a1c9f7"                  // Device Id from smartnest
-#define MQTT_CLIENT2 "62a875a2f8510369f2a1ca99"                  // Device Id from smartnest
-#define FIRMWARE_VERSION "TechInside - Modulo de automação"  // Custom name for this program
+#define SSID_NAME "DESKTOP-EARRVEN 0776"                    // Nome da rede
+#define SSID_PASSWORD "304$73Qc"                            // Senha da rede
+#define MQTT_BROKER "smartnest.cz"                          // Servidor Broker
+#define MQTT_PORT 1883                                      // Porta Broker
+#define MQTT_USERNAME "wl11lm"                              // Username do Smartnest
+#define MQTT_PASSWORD "ed0bf3995ac52aa325ac2c11a29dbb80"    // Chave API
+#define MQTT_CLIENT "62a2142ef8510369f2a1c9f7"              // ID do dispositivo (reles)
+#define MQTT_CLIENT2 "62a875a2f8510369f2a1ca99"             // ID do dispositivo (sensor PIR)
+#define FIRMWARE_VERSION "TechInside - Modulo de automação" // Nome do programa
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
+
+//-----------------------------------------------------------Define as variáveis
 int switchPin1 = 2;
 int switchPin2 = 0;
 int bellPin = 4;
 bool bellTriggered = false;
 int bellReportSend = 0;
 
+
+//-----------------------------------------------------------Inicia as funcoes
 void startWifi();
 void startMqtt();
 void sendBellReport();
@@ -29,14 +33,18 @@ void checkMqtt();
 int splitTopic(char* topic, char* tokens[], int tokensNumber);
 void callback(char* topic, byte* payload, unsigned int length);
 void sendToBroker(char* topic, char* message, int device);
-
 void turnOff(int pin);
 void turnOn(int pin);
 
+
+
+
 void setup() {
+  // Define os pinos de entrada e saída
   pinMode(switchPin1, OUTPUT);
   pinMode(switchPin2, OUTPUT);
   pinMode(bellPin, INPUT);
+  
   Serial.begin(115200);
   startWifi();
   startMqtt();
@@ -44,11 +52,14 @@ void setup() {
 
 void loop() {
   client.loop();
-  checkBell();
-  checkMqtt();
+  checkBell();                                                    //Verifica o sensor
+  checkMqtt();                                                    //Verifica conexao com o servidor
 }
 
-void callback(char* topic, byte* payload, unsigned int length) {  //A new message has been received
+
+
+
+void callback(char* topic, byte* payload, unsigned int length) {  //Se algum novo comando foi recebido
   Serial.print("Topic:");
   Serial.println(topic);
   int tokensNumber = 10;
@@ -62,7 +73,7 @@ void callback(char* topic, byte* payload, unsigned int length) {  //A new messag
   Serial.print("Message:");
   Serial.println(message);
 
-  //------------------ACTIONS HERE---------------------------------
+  //------------------Acoes (ligar e desligar os reles)---------------------------------
 
   if (strcmp(tokens[1], "directive") == 0) {
     if (strcmp(tokens[2], "powerState1") == 0) {
@@ -81,7 +92,8 @@ void callback(char* topic, byte* payload, unsigned int length) {  //A new messag
   }
 }
 
-void startWifi() {
+
+void startWifi() {                                                          //Conecta ao Wifi
   WiFi.mode(WIFI_STA);
   WiFi.begin(SSID_NAME, SSID_PASSWORD);
   Serial.println("Connecting ...");
@@ -107,7 +119,11 @@ void startWifi() {
   delay(500);
 }
 
-void startMqtt() {
+void startMqtt() {                                                          // Conecta ao servidor
+  if(WiFi.status() != WL_CONNECTED){                                        // Se desconectado do wifi, tenta novamente
+    startWifi();
+  }
+  
   client.setServer(MQTT_BROKER, MQTT_PORT);
   client.setCallback(callback);
 
@@ -134,30 +150,34 @@ void startMqtt() {
 
   char subscibeTopic[100];
   sprintf(subscibeTopic, "%s/#", MQTT_CLIENT);
-  client.subscribe(subscibeTopic);  //Subscribes to all messages send to the device
+  client.subscribe(subscibeTopic);                                            //Inscreve-se em todas as mensagens enviadas para o dispositivo
 
-  sendToBroker("report/online", "true", 1);  // Reports that the device is online
+  
+  //Reles
+  sendToBroker("report/online", "true", 1);                                   // Reporta que o dispositivo está ligado
   delay(100);
-  sendToBroker("report/firmware", FIRMWARE_VERSION, 1);  // Reports the firmware version
+  sendToBroker("report/firmware", FIRMWARE_VERSION, 1);                       // Reporta a versao do firmware
   delay(100);
-  sendToBroker("report/ip", (char*)WiFi.localIP().toString().c_str(), 1);  // Reports the ip
+  sendToBroker("report/ip", (char*)WiFi.localIP().toString().c_str(), 1);     // Reporta o IP
   delay(100);
-  sendToBroker("report/network", (char*)WiFi.SSID().c_str(), 1);  // Reports the network name
+  sendToBroker("report/network", (char*)WiFi.SSID().c_str(), 1);              // Reporta o nome da rede
   delay(100);
-  sendToBroker("report/online", "true", 2);  // Reports that the device is online
+  
+  //Sensor
+  sendToBroker("report/online", "true", 2);                                   // Reporta que o dispositivo está ligado
   delay(100);
-  sendToBroker("report/firmware", FIRMWARE_VERSION, 2);  // Reports the firmware version
+  sendToBroker("report/firmware", FIRMWARE_VERSION, 2);                       // Reporta a versao do firmware
   delay(100);
-  sendToBroker("report/ip", (char*)WiFi.localIP().toString().c_str(), 2);  // Reports the ip
+  sendToBroker("report/ip", (char*)WiFi.localIP().toString().c_str(), 2);     // Reporta o IP
   delay(100);
-  sendToBroker("report/network", (char*)WiFi.SSID().c_str(), 2);  // Reports the network name
+  sendToBroker("report/network", (char*)WiFi.SSID().c_str(), 2);              // Reporta o nome da rede
   delay(100);
 
   char signal[5];
   sprintf(signal, "%d", WiFi.RSSI());
-  sendToBroker("report/signal", signal, 1);  // Reports the signal strength
+  sendToBroker("report/signal", signal, 1);  // Relata a itensidade do sinal
   delay(100);
-  sendToBroker("report/signal", signal, 2);  // Reports the signal strength
+  sendToBroker("report/signal", signal, 2);  // Relata a itensidade do sinal
   delay(100);
 }
 
@@ -180,7 +200,7 @@ void checkMqtt() {
   }
 }
 
-void checkBell() {
+void checkBell() {                                                                // Verifica se houve movimento
   int buttonState = digitalRead(bellPin);
   if (buttonState == LOW && !bellTriggered) {
     return;
@@ -190,7 +210,7 @@ void checkBell() {
 
   } else if (buttonState == HIGH && !bellTriggered) {
     bellTriggered = true;
-    sendBellReport();
+    sendBellReport();                                                             // Se houver, relata ao servidor
 
   } else if (buttonState == HIGH && bellTriggered) {
     return;
@@ -198,14 +218,14 @@ void checkBell() {
 }
 
 
-void sendBellReport() {  //Avoids sending repeated reports. only once every 5 seconds.
-  if (millis() - bellReportSend > 5000) {
+void sendBellReport() {                                                           // Envia o sinal ao server
+  if (millis() - bellReportSend > 5000) {                                         // A cada 5s (evitar repeticao)
     sendToBroker("report/detectionState", "true", 2);
     bellReportSend = millis();
   }
 }
 
-void sendToBroker(char* topic, char* message, int device) {
+void sendToBroker(char* topic, char* message, int device) {                       // Comunica o estado dos Reles (1) e sensor (2)
   if (client.connected()) {
   char topicArr[100];
   switch (device) {
@@ -220,7 +240,7 @@ void sendToBroker(char* topic, char* message, int device) {
   }
 }
 
-void turnOff(int pin) {
+void turnOff(int pin) {                                                             // Funcao de desligar os pinos
   Serial.printf("Turning off pin %d...\n", pin);
   switch (pin) {
   case 1:
@@ -234,7 +254,7 @@ void turnOff(int pin) {
   }
 }
 
-void turnOn(int pin) {
+void turnOn(int pin) {                                                               // Funcao de ligar os pinos
   Serial.printf("Turning on pin %d...\n", pin);
   switch (pin) {
   case 1:
